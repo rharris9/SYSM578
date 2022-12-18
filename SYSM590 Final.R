@@ -1,5 +1,5 @@
 
-#Final Exam 1
+#Final Exam 
 
 library(car)
 library(MASS)	 
@@ -586,10 +586,306 @@ model <- glm(infections ~ age_group + swimmer + swam_in, data = data, family = b
 # Attempting Ridge Regression
 data <- read_excel("/Users/rharris/Desktop/final2022_data.xlsx", sheet = "T5")
 
-X <- data[, -1]
+X <- data[, -4]
 Y <- data$infections
-
+X
 # Fit a Ridge Regression model on the data et
-ridge_model <- glmnet(as.matrix(data[, -1]), data$infections, alpha = 0, lambda = 0.1)
+ridge_model <- glmnet(as.matrix(X), Y, alpha = 0, lambda = 0.1)
 summary(ridge_model)
+
+#using elastic net regression
+my_folds <- 4	# how many folds do you want for cross-validation? should be >= 3
+
+
+
+# ************************* NO changes needed below *********************************************************************
+
+my_ENET = train(
+  Y ~ ., 
+  data=my_data,
+  method = "glmnet",
+  trControl = trainControl(method = "cv", number = my_folds),
+  tunelength = 10
+)
+
+my_ENET
+
+# choosing alpha and lambda "judgmentally" by picking alpha such that the RMSEs by alpha have the smallest
+# standard deviation; and then picking the lambda corresponding to the alpha in that group with the smallest RMSE
+min_rmse_sd <- tapply(my_ENET$results[,3], my_ENET$results[,1], sd)
+idx <- which(min_rmse_sd == min(min_rmse_sd))
+alpha_best <- as.numeric(noquote(names(min_rmse_sd[idx])))
+
+lambda_best0 <- my_ENET$results[my_ENET$results[,1]==alpha_best, 1:3]
+min_RMSE_for_alpha <- min(lambda_best0[,3])
+idx0 <- which(lambda_best0[,3] == min(lambda_best0[,3]))
+lambda_best <- lambda_best0[idx0,2]
+
+enet_model <- glmnet(x=X, y=Y, alpha=alpha_best, lambda=lambda_best)
+betas <- coef(enet_model)      # judgmentally selected model
+num_betas <- sum(betas !=0)    # number of Xs selected judgmentally
+
+
+# choosing a model by picking the alpha-lambda combo that yields the lowest RMSE
+best = which(rownames(my_ENET$results) == rownames(my_ENET$bestTune))
+best_result = my_ENET$results[best, ]   # stats for R selected model
+rownames(best_result) = NULL
+best_result
+enet_model1 <- glmnet(x=X, y=Y, alpha=best_result[1,1], lambda=best_result[1,2])
+betas1 <- coef(enet_model1) 
+print(sum(betas1 !=0))   # R picked number of Xs
+# judgmentally picked alpha, lambda, number of Xs & RMSE
+print(cbind(alpha_best, lambda_best, num_betas, min_RMSE_for_alpha))   
+cbind(betas, betas1)  # Coefficients of judgmentally and R picked models
+
+
+
+
+#==============Question 7=============================
+data <- read_excel("/Users/rharris/Desktop/final2022_data.xlsx", sheet = "T6")
+
+#linear regression
+fit_lm <- lm(Y ~ ., data = df)
+mse <- mean((predictions - data$Y)^2)
+summary(fit_lm)
+
+#logistical regression
+fit_glm <- glm(Y ~ ., data = data, family = binomial)
+
+#Lasso Regression
+cols <- ncol(data)
+rows <- nrow(data)
+
+# define your X and Y variables as matrices
+
+my_X <- as.matrix(sapply(data[,2:89], as.numeric))
+my_Y <- as.matrix(sapply(Y, as.numeric))
+
+my_alpha <- 1	# set your alpha value. For Lasso, alpha is ALWAYS 1
+my_folds <- 3
+
+cv_output <- cv.glmnet(x=my_X, y=my_Y, alpha = my_alpha, type.measure="mse", nfolds=my_folds)
+plot(cv_output)	# MSE plot
+best_lambda <- cv_output$lambda.min
+print(best_lambda)
+
+lasso_best <- glmnet(x=my_X, y=my_Y, alpha=my_alpha, lambda=best_lambda)
+lasso_coef <- coef(lasso_best)	# lasso coefficients
+print(lasso_coef)
+lasso_pred <- predict(lasso_best, s=best_lambda, newx=my_X)	# lasso predictions for lasso_best
+
+# calculate R-squared
+rss <- sum((lasso_pred - my_Y) ^ 2)	# residual sum of squares
+tss <- sum((my_Y - mean(my_Y)) ^ 2)	# total sum of squares
+rsq <- 1 - rss/tss
+print(rsq)
+
+#Least Squares Regression
+data <- read_excel("/Users/rharris/Desktop/final2022_data.xlsx", sheet = "T6")
+
+reg <- lm(Y ~ ., data = data)
+summary(reg)
+# Calculating the AIC and BIC 
+aic_full <- AIC(reg)
+bic_full <- BIC(reg)
+
+# Calculate the adjusted R-squared for the full model
+adj_r2_full <- summary(reg)$adj.r.squared
+
+aic_full
+bic_full 
+# finding the optimal subset of features
+fit_subsets <- regsubsets(y ~ ., data = data, nbest = 1)
+#Had some problems with completing the code to get the full features selected for this model
+
+#====================Question 8====================================
+library(stats)
+
+data <- read_excel("/Users/rharris/Desktop/final2022_data.xlsx", sheet = "T7")
+
+rac <- glm(STA ~ RACE, data = data, family = "binomial")
+summary(rac)
+
+subset <- regsubsets(STA ~ ., data = data, nbest = 1)
+cp <- Cp(rac)
+adj_r2 <- rsquaredAdj(rac)
+aic_full <- AIC(rac)
+aic_full
+bic_full <- BIC(rac)
+bic_full
+data_clean=data
+
+
+# defining gender:
+data_clean$male <- ifelse(data_clean$GENDER=="Male", 1, 0)
+# defining race:
+data_clean$white <- ifelse(data_clean$RACE==1, 1, 0)
+data_clean$black <- ifelse(data_clean$RACE==2, 1, 0)
+
+# defining SER: 		
+data_clean$ser1 <- ifelse(data_clean$SER=="Medical", 1, 0)
+# defining CAN:
+data_clean$can1 <- ifelse(data_clean$CAN=="Yes", 1, 0)
+# defining CRN:
+data_clean$crn1 <- ifelse(data_clean$CRN=="Yes", 1, 0)
+# defining INF:
+data_clean$inf1 <- ifelse(data_clean$INF=="Yes", 1, 0)
+# defining CPR:
+data_clean$cpr1 <- ifelse(data_clean$CPR=="Yes", 1, 0)
+# defining PRE:
+data_clean$pre1 <- ifelse(data_clean$PRE=="Yes", 1, 0)
+# defining TYP:
+data_clean$typ1 <- ifelse(data_clean$TYP=="Elective", 1, 0)
+# defining FRA:
+data_clean$fra1 <- ifelse(data_clean$FRA=="Yes", 1, 0)
+# defining LOC:
+data_clean$loc1 <- ifelse(data_clean$LOC==1, 1, 0)
+data_clean$loc2 <- ifelse(data_clean$LOC==2, 1, 0)
+reg <- glm(STA ~ AGE + male + white + black + ser1 + can1 + crn1 + inf1 + cpr1 + SYS + HRA + pre1 + typ1
+           + fra1 + PO2 + PH + PCO + BIC + CRE + loc1 + loc2, family=binomial, data=data_clean)
+summary(reg)
+
+
+# Run "backward" selection. 
+step(reg, trace=0) # backward selection
+# Then run with "backward" selected Xs
+reg_backward <- glm(STA ~ AGE + black + can1 + SYS + pre1 + typ1 + PH + PCO + loc1 + loc2, 
+                    family=binomial, data=data_clean)
+summary(reg_backward)
+# store the predictions made by the "backward" selected model
+yhat_backward <- predict(reg_backward, data=data_clean, type="response")
+
+
+# Run forward selection. Then run with "forward" selected Xs
+nothing <- glm(STA ~ 1, family=binomial, data=data_clean)
+step(nothing, scope=list(lower=formula(nothing),upper=formula(reg)), direction="forward", trace=0)
+reg_forward <- glm(STA ~ loc2 + loc1 + typ1 + AGE + can1 + SYS + black + pre1, family=binomial, data=data_clean)
+summary(reg_forward)
+yhat_forward <- predict(reg_forward, data=data_clean, type="response")
+
+# Let's do "both" ways selection
+nothing <- glm(STA ~ 1, family=binomial, data=data_clean)
+step(nothing, scope=list(lower=formula(nothing),upper=formula(reg)), direction="both", trace=0)
+# didn't run with "both" selected Xs, because they are identical to the Xs selected by "backward" selection
+
+# get KS by comparing distribution of predictions between Y=0 and Y=1
+# START defining your inputs
+my_dataset <- data_clean		# which dataset are you using?
+my_Y <- my_dataset$STA			# what is your Y variable?
+my_yhat <- yhat_forward		# what are your predictions?
+# END defining your inputs
+
+# START KS code - NO need to change this block of KS code!!!
+my_yhat1 <- pmax( my_yhat,  rep(0,length(my_yhat)) )	# set predictions < 0 to 0
+my_yhat2 <- pmin( my_yhat1, rep(1,length(my_yhat)) )	# set predictions > 1 to 1
+yhat_when_Y_is_0 <- subset(cbind(my_yhat2, my_Y), my_Y==0) #find predictions for Y=0
+yhat_when_Y_is_1 <- subset(cbind(my_yhat2, my_Y), my_Y==1) #find predictions for Y=1
+yhat0 <- as.matrix(sapply(yhat_when_Y_is_0[,1], as.numeric))
+yhat1 <- as.matrix(sapply(yhat_when_Y_is_1[,1], as.numeric))
+seq = seq(0, 1, by=0.01)	# use to output CDF values from ecdf
+cdf0 <- ecdf(yhat0)	# get the empirical CDF for yhat0
+cdf1 <- ecdf(yhat1)	# get the empirical CDF for yhat1
+ks.test(cdf0(seq),cdf1(seq))
+# END KS code
+
+
+
+#=================Question 9===============
+data <- read_excel("/Users/rharris/Desktop/final2022_data.xlsx", sheet = "T8")
+
+# Ridge Regression Model
+
+x <- data[, 6, 1]
+x
+y <- data[, 7]
+
+y <- data$Loss
+X <- data[, c("borrowers", "county", "density", "rating", "age", "defaults")]
+
+# scaling the data
+X <- scale(X)
+
+# Fit the ridge regression model
+model <- glmnet(X, y, alpha = 0, lambda = 0.1)
+summary(model)
+# making prediction
+predictions <- predict(model, newx = X)
+predictions
+
+
+# Calculating the mean squared error
+mse <- mean((predictions - y)^2)
+
+# Print the mean squared error
+print(mse)
+
+#checking data
+cp <- Cp(model)
+adj_r2 <- rsquare(model)
+aic_full <- AIC(model)
+aic_full
+bic_full <- BIC(model)
+bic_full
+
+#=============================Question 10===================
+data <- read_excel("/Users/rharris/Desktop/final2022_data.xlsx", sheet = "T9")
+
+library(MASS)
+fit <- fitdistr(X, "normal")
+fit
+summary(fit)
+estimate <- qnorm(0.95, mean=fit$estimate[1], sd=fit$estimate[2])
+estimate
+
+#trying for poisson
+fitpoi <- fitdistr(X, "poisson")
+fitpoi
+summary(fitpoi)
+
+#saving the mean and SD from the normal set
+mean <- fit$estimate[1]
+sd1 <- fit$estimate[2]
+mean
+# calculating the 95th percentile of the PD
+quantile <- qnorm(0.95, mean, sd1)
+
+# Print the 95th percentile
+print(quantile)
+
+#Printing Empirical 95th percentile of data
+Empirical <- quantile(X, 0.95)
+print(Empirical)
+
+#finding Standard Deviation of Median 
+standard_deviation <- sd(X)
+print(standard_deviation)
+
+# Calculate the interquartile range (IQR) of the data to calculate the standard deviation of the median
+IQR <- quantile(X, 0.75) - quantile(X, 0.25)
+n <- length(X)
+sd_median <- (1.253 * IQR)/sqrt(n)
+
+# Printing
+print(sd_median)
+
+#Using KS Test to test
+# get KS by comparing distribution of predictions between Y=0 and Y=1
+# START defining your inputs
+my_dataset <- data	# which dataset are you using?
+my_Y <- data$D		# what is your Y variable?
+my_yhat <- yhat_wls			# what are your predictions?
+# END defining your inputs
+
+# START KS code - NO need to change this block of KS code!!!
+my_yhat1 <- pmax( my_yhat,  rep(0,length(my_yhat)) )	# set predictions < 0 to 0
+my_yhat2 <- pmin( my_yhat1, rep(1,length(my_yhat)) )	# set predictions > 1 to 1
+yhat_when_Y_is_0 <- subset(cbind(my_yhat2, my_Y), my_Y==0) #find predictions for Y=0
+yhat_when_Y_is_1 <- subset(cbind(my_yhat2, my_Y), my_Y==1) #find predictions for Y=1
+yhat0 <- as.matrix(sapply(yhat_when_Y_is_0[,1], as.numeric))
+yhat1 <- as.matrix(sapply(yhat_when_Y_is_1[,1], as.numeric))
+seq = seq(0, 1, by=0.01)	# use to output CDF values from ecdf
+cdf0 <- ecdf(yhat0)	# get the empirical CDF for yhat0
+cdf1 <- ecdf(yhat1)	# get the empirical CDF for yhat1
+ks.test(cdf0(seq),cdf1(seq))
+# END KS code
 
